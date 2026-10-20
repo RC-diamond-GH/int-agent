@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Check formatting
+        run: cargo +1.90.0 fmt --all -- --check
+      - name: Check lints
+        run: cargo +1.90.0 clippy --locked --all-targets -- -D warnings
+      - name: Run behavioral tests
+        run: cargo +1.90.0 test --locked

@@ -1,0 +1,21 @@
+{
+  "repository": "/home/you/Projects/my-project",
+  "worktree_root": "/home/you/Projects/my-project-worktrees",
+  "state_dir": "/home/you/.local/state/int-agent/my-project",
+  "default_branch": "main",
+  "remote": "origin",
+  "omp": "omp",
+  "tmux": "tmux",
+  "gh": "gh",
+  "approval_mode": "write",
+  "poll_seconds": 5,
+  "max_workers": 4,
+  "allowed_models": [],
+  "github": {
+    "repository": "OWNER/REPOSITORY",
+    "required_checks": ["verify"],
+    "post_merge_workflows": ["ci.yml"],
+    "merge_policy": "manual",
+    "delete_remote_branches": false
+  }
+}
