@@ -12,6 +12,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: int-agent-mcp
     steps:
       - uses: actions/checkout@v6
       - name: Install pinned Rust toolchain
