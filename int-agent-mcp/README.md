@@ -16,6 +16,8 @@
 
 需要 Rust 1.90+、Git、tmux、已配置模型认证的 omp。GitHub 自动交付还需要近期版本 `gh` 和相应仓库权限。
 
+以下安装命令在仓库的 `int-agent-mcp/` 目录执行。
+
 ```bash
 sudo apt update
 sudo apt install git tmux
@@ -242,13 +244,16 @@ Reviewer 的 JSON 是 Agent 提供的证据，不是对代码正确性的数学�
 ## 开发与验证
 
 ```bash
-cargo test --locked
+cd int-agent-mcp # 从仓库根目录进入 crate
+cargo +1.90.0 fmt --all -- --check
+cargo +1.90.0 clippy --locked --all-targets -- -D warnings
+cargo +1.90.0 test --locked
 cargo build --locked
 ```
 
 测试关注幂等持久化、取消恢复、协议边界、版本门禁和安全状态转换。单元测试不代替真实 MCP 握手、daemon 重启、tmux/omp 就绪与 GitHub 交付演练。
 
-仓库自带 `.github/workflows/ci.yml`：PR 和 main push 均运行真实的格式检查、Clippy 与行为测试，job 名为 `verify`。把本项目作为受控仓库时，示例配置的 `verify` / `ci.yml` 与它对应；尚未配置远端保护规则或尚未运行的 CI 不算已通过。
+仓库根目录的 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 可由 GitHub Actions 发现：面向 main 的 PR 和 main push 均运行真实的格式检查、Clippy 与行为测试，job ID 和检查名保持为 `verify`。工作流在 checkout 后安装 Rust 1.90.0（含 rustfmt 和 Clippy），所有 `run` 步骤的工作目录为 `int-agent-mcp/`，`contents` 权限仅为只读。把本项目作为受控仓库时，示例配置的 `verify` / `ci.yml` 与它对应；尚未配置远端保护规则或尚未运行的 CI 不算已通过。
 
 本地实施验证：
 
