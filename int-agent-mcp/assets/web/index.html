@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="int-agent 本机只读协作看板：任务、运行身份与交付证据。">
+  <title>协作观测台 · int-agent</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#task-detail">跳至任务详情</a>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">ia</span><div><strong>int-agent</strong><span>本机协作观测台</span></div></div>
+    <div class="header-actions"><span class="readonly">只读 · 不代答、不执行</span><button id="refresh" type="button">刷新观测</button></div>
+  </header>
+  <main>
+    <section class="overview" aria-labelledby="overview-title">
+      <div><p class="eyebrow">COLLABORATION / OBSERVABILITY</p><h1 id="overview-title">看清任务，回到现场。</h1><p class="intro">任务记录、实时进程观测与历史证据分开呈现。所有判断都有边界，所有操作仍在原生终端。</p></div>
+      <div class="connection-card"><div class="section-heading"><h2>控制器连接</h2><span id="connection-state" class="badge neutral">尚未观测</span></div><div id="status-data" class="status-data">正在读取本机 daemon…</div><p id="status-freshness" class="freshness">尚无成功观测</p><p id="status-error" class="error" role="status" hidden></p></div>
+    </section>
+    <section class="integration-panel" aria-labelledby="integration-title"><div><p class="eyebrow">GLOBAL INTEGRATION</p><h2 id="integration-title">全局集成占位 / 阻塞</h2><p>由 daemon 返回的全局集合，不受当前页或状态筛选影响；包含合并中、合并后 CI 与集成阻塞，并非全部任务都已失败。</p></div><div id="integration-blockers" class="blockers"><span class="muted">尚未读取</span></div><p id="blockers-freshness" class="freshness">尚无成功观测</p></section>
+    <div class="workspace">
+      <aside class="task-sidebar" aria-labelledby="tasks-title">
+        <div class="sidebar-heading"><p class="eyebrow">TASK INDEX</p><h2 id="tasks-title">任务索引</h2><p>每页最多 25 项，不代表团队总量。</p></div>
+        <label class="filter-label" for="state-filter">状态筛选 <span>仅筛选当前页</span></label>
+        <select id="state-filter"><option value="all">当前页 · 全部状态</option></select>
+        <p id="page-summary" class="page-summary" aria-live="polite">正在读取任务页…</p>
+        <p id="list-error" class="error" role="status" hidden></p>
+        <div id="task-list" class="task-list"><p class="empty">连接后显示真实任务，不填充演示数据。</p></div>
+        <nav class="pagination" aria-label="任务分页"><button id="previous-page" type="button" disabled>← 上一页</button><span id="page-number">第 1 页</span><button id="next-page" type="button" disabled>下一页 →</button></nav>
+        <p id="list-freshness" class="freshness">尚无成功观测</p>
+      </aside>
+      <section id="task-detail" class="task-detail" aria-labelledby="detail-title" tabindex="-1">
+        <div class="detail-topline"><span class="eyebrow">TASK EVIDENCE</span><span id="selection-location" class="muted">尚未选择任务</span></div>
+        <h2 id="detail-title">选择一个任务</h2>
+        <p id="detail-freshness" class="freshness">任务详情独立观测；列表与详情时间可能不同。</p>
+        <p id="detail-error" class="error" role="status" hidden></p>
+        <div id="detail-content"><div class="welcome"><span class="welcome-icon" aria-hidden="true">◎</span><h3>从任务进入协作现场</h3><p>查看 Worker / Reviewer 的真实身份、待答记录、固定版本的审查与 CI 证据。切换分页不会清除已选任务或已读取事件。</p></div></div>
+      </section>
+    </div>
+    <section class="roles-section" aria-labelledby="roles-title">
+      <div class="section-heading"><div><p class="eyebrow">RESPONSIBILITIES, NOT LIVE SESSIONS</p><h2 id="roles-title">角色与协作边界</h2></div><span class="badge neutral">静态职责图 · 非在线成员统计</span></div>
+      <div class="role-grid">
+        <article><span class="role-number">01</span><h3>用户</h3><p>定义目标与验收；回原生 Worker / Reviewer 窗口回答问题和权限确认。</p></article>
+        <article><span class="role-number">02</span><h3>大管家 / Steward</h3><p>与用户讨论、通过 MCP 分派任务和读取证据。daemon 不追踪其会话、进程、在线人数或每个任务的创建者身份。</p></article>
+        <article><span class="role-number">03</span><h3>控制器 / daemon</h3><p>持久化任务，通过私有 tmux 管理运行实例，并按版本证据推进交付门禁；不是实现任务的 Agent。</p></article>
+        <article><span class="role-number">04</span><h3>Worker</h3><p>在独立 worktree 实现任务，持有独立运行与会话；提问记录与进程是否存活需要分别核对。</p></article>
+        <article><span class="role-number">05</span><h3>Reviewer</h3><p>在固定 base / head 的独立 worktree 审查，提交结构化报告；运行结束不等于报告通过。</p></article>
+        <article><span class="role-number">06</span><h3>GitHub</h3><p>保存 PR 与实际 CI / 合并证据。看板展示 daemon 记录，不自行实时查询远端，也不授权合并。</p></article>
+      </div>
+      <p class="relationship">职责关系：用户 ↔ 大管家 → MCP → 控制器 → Worker / Reviewer；控制器 ↔ GitHub。此图不是实际创建链或等待依赖图；具体创建者与任意任务依赖未被追踪，只有明确的修复关联、待答记录及事件可作为关系证据。</p>
+    </section>
+    <footer><strong>观测不是操作，也不是完整现场。</strong><p>原生工具权限弹窗不在看板观测范围内；没有 pending 记录不代表没有等待。ask 记录可能早于弹窗或在崩溃后残留。请在对应私有 tmux 窗口核实并处理。网页只提供经过引用处理的接入命令复制，不执行终端、不回答问题、不恢复、不取消、不合并。</p><span id="poll-state">自动观测约每 5 秒一次；请求串行，不重叠。</span></footer>
+  </main>
+  <div id="copy-status" class="copy-status" role="status" aria-live="polite"></div>
+</body>
+</html>
