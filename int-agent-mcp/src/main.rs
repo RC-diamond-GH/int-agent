@@ -7,6 +7,7 @@ mod model;
 mod runtime;
 mod service;
 mod store;
+mod web;
 
 use std::{
     path::{Path, PathBuf},
@@ -42,6 +43,11 @@ enum Command {
     Call,
     /// Attach to the native interactive Worker/Reviewer tmux session.
     Attach,
+    /// Serve the local read-only Chinese dashboard; never starts the daemon.
+    Web {
+        #[arg(long, default_value_t = 8765)]
+        port: u16,
+    },
 }
 
 #[tokio::main]
@@ -66,6 +72,7 @@ async fn run(cli: Cli) -> Result<bool> {
         Command::Serve => mcp::serve(&config).await?,
         Command::Daemon => service::run(config).await?,
         Command::Attach => runtime::attach(&config).await?,
+        Command::Web { port } => web::run(config, port).await?,
         Command::Call => unreachable!("call handled before loading configuration"),
     }
     Ok(true)
