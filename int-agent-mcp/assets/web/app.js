@@ -2,6 +2,7 @@
 
 (() => {
   const $ = id => document.getElementById(id);
+  const OBSERVATION_TTL = 30000;
   const STATES = {
     starting: "启动中", running: "任务执行中", waiting_user: "记录为待用户", pr_ci: "PR CI",
     review: "独立审查", changes_requested: "要求修改", ready_to_merge: "待合并",
@@ -132,7 +133,7 @@
   function entry(id) {
     if (!state.tasks.has(id)) state.tasks.set(id, {
       response: null, error: "", events: new Map(), nextAfter: null, lastSequence: 0,
-      hasEventPage: false, eventObservedAt: null
+      hasEventPage: false, eventObservedAt: null, requestedAt: null
     });
     return state.tasks.get(id);
   }
@@ -211,10 +212,12 @@
     const cached = entry(id);
     const after = cached.nextAfter !== null ? cached.nextAfter : cached.lastSequence;
     const params = new URLSearchParams({ task_id: id, events_after: String(after), event_limit: "25" });
+    const requestedAt = performance.now();
     try {
       const response = await get(`/api/task?${params}`);
       if (response.result.task.id !== id) throw new Error("返回的任务身份与请求不一致，未更新快照。");
       cached.response = response;
+      cached.requestedAt = requestedAt;
       cached.error = "";
       for (const event of array(response.result.events)) {
         cached.events.set(event.sequence, event);
@@ -257,9 +260,10 @@
       const top = element("div", "task-card-top");
       const id = element("span", "task-short-id mono", task.id);
       id.title = task.id;
-      top.append(id, badge(STATES[task.state] || task.state, task.state));
+      top.append(id, badge(`交付阶段 · ${STATES[task.state] || task.state}`, task.state));
       button.append(top, element("h3", "", task.title), element("span", "branch mono", text(task.branch)));
       button.append(element("span", "task-meta", `${task.worker ? "Worker 有运行记录" : "Worker 未创建"} · ${task.reviewer ? "Reviewer 有运行记录" : "Reviewer 未创建"}`));
+      button.append(element("span", "task-meta", "仅数据库摘要 · 未采样实际进程，不计在线"));
       button.append(element("span", "task-meta", `更新于 ${time(task.updated_at)}`));
       if (task.last_error_excerpt) button.append(element("span", "task-card-error", task.last_error_excerpt));
       button.addEventListener("click", () => selectTask(task.id));
@@ -303,6 +307,16 @@
     request(["detail"]);
   }
 
+  function observationStale(cached, observation) {
+    const sampled = Date.parse(observation?.observed_at);
+    const snapshot = Date.parse(cached.response?.observed_at);
+    // Include request latency so a delayed success cannot revive an old sample.
+    const elapsed = performance.now() - cached.requestedAt;
+    return !!cached.error || cached.requestedAt === null || !Number.isFinite(sampled)
+      || !Number.isFinite(snapshot) || sampled > snapshot || elapsed < 0
+      || snapshot - sampled + elapsed >= OBSERVATION_TTL;
+  }
+
   function renderDetail() {
     const cached = entry(state.selected);
     const response = cached.response;
@@ -316,10 +330,11 @@
     const task = response.result.task;
     $("detail-title").textContent = text(task.spec?.title, task.id);
     const observations = response.observations || {};
+    const stale = Object.fromEntries(["worker", "reviewer"].map(role => [role, observationStale(cached, observations[role])]));
     const stableObservation = value => value ? { ...value, observed_at: undefined } : null;
     const signature = JSON.stringify({
       task, pending: [response.result.worker_pending, response.result.reviewer_pending],
-      stale: !!cached.error,
+      stale,
       observations: [stableObservation(observations.worker), stableObservation(observations.reviewer)],
       events: [...cached.events.values()], nextAfter: cached.nextAfter, eventFilter: state.eventFilter
     });
@@ -329,18 +344,30 @@
       const focusedControl = content.contains(document.activeElement) ? document.activeElement?.id : null;
       content.replaceChildren();
       const strip = element("div", "summary-strip");
-      strip.append(badge(STATES[task.state] || task.state, task.state), element("span", "mono", task.id));
+      strip.append(element("strong", "", "任务交付阶段"), badge(STATES[task.state] || task.state, task.state), element("span", "mono", task.id));
       content.append(strip);
       content.append(element("p", "section-note", "上方是控制器保存的任务阶段，不是进程健康状态，也不表示模型正在输出。下方进程观测、待答记录与历史事件分别核对。"));
       if (STAGE_NOTES[task.state]) content.append(notice(STAGE_NOTES[task.state]));
       if (task.last_error) content.append(element("p", "error", `任务最后错误记录：${task.last_error}`));
-      content.append(buildSpec(task));
-      const agents = section("运行实例与原生现场", "agents");
-      agents.append(element("p", "section-note", "“运行中”仅表示服务端验证了私有 tmux pane、run ID 与实际 PID；不代表模型忙碌、没有待答或任务成功。记录中的 PID / 会话路径不是当前存活证据。"));
+      const agents = section("当前运行观测 · 仅所选任务", "agents");
+      const roles = ["worker", "reviewer"].filter(role => task[role]);
+      const online = roles.filter(role => !stale[role] && observations[role]?.state === "running");
+      const stopped = roles.filter(role => !stale[role] && observations[role]?.state === "not_running");
+      agents.append(element("p", "section-note", "只统计所选任务当前保存的 Worker / Reviewer Run，不是本页或全团队在线人数。只有本次成功采样并核对身份的 running 才计入在线；30 秒未更新或读取失败即降为旧观测。"));
+      const summary = element("div", "summary-strip");
+      summary.id = "run-summary";
+      summary.append(badge(`采样确认在线 ${online.length}`, online.length ? "running" : "unknown"),
+        element("span", "", `本次未运行 ${stopped.length} · 未知 / 旧观测 ${roles.length - online.length - stopped.length} · 运行记录 ${roles.length}`));
+      agents.append(summary);
+      if (!online.length) agents.append(notice("当前没有可确认在线的运行实例。未运行、未知和旧观测不能当作在线；未知也不能断言已停止。任务交付阶段与历史证据继续保留。"));
+      else agents.append(valuesList(online.map(role => `${role === "worker" ? "Worker" : "Reviewer"} · Run ${task[role].id}`), ""));
+      agents.append(notice("原生权限确认弹窗不可观测。pending 为 null 只表示本次没有读到 ask 记录，不能推断没有等待；进程仍运行也可能正在等待用户。请在确有当前实例时回对应窗口核实，不要在网页代答。"));
+      const history = section("运行记录 · 工作区与会话历史", "run-records", true, true);
+      history.append(element("p", "section-note", "以下是各角色最近一次持久化 Run，不是所有历次运行的完整清单，也不是在线成员列表。PID、窗口与目录的保存不保证资源仍存活；旧窗口可能已不存在。"));
       const grid = element("div", "agent-grid");
-      for (const role of ["worker", "reviewer"]) grid.append(buildAgent(role, task[role], observations[role], response.result[`${role}_pending`], !!cached.error));
-      agents.append(grid, notice("原生权限确认弹窗不可观测。pending 为 null 只表示本次没有读到 ask 记录，不能推断没有等待；进程仍运行也可能正在等待用户。请回对应窗口核实，不要在网页代答。"));
-      content.append(agents, buildDelivery(task, cached), buildFeedback(cached), buildEvents(cached));
+      for (const role of ["worker", "reviewer"]) grid.append(buildAgent(role, task[role], observations[role], response.result[`${role}_pending`], stale[role]));
+      history.append(grid);
+      content.append(agents, history, buildSpec(task), buildDelivery(task, cached), buildFeedback(cached), buildEvents(cached));
       for (const disclosure of content.querySelectorAll("details[data-disclosure]")) {
         if (openStates.has(disclosure.dataset.disclosure)) disclosure.open = openStates.get(disclosure.dataset.disclosure);
       }
@@ -349,7 +376,7 @@
     }
     for (const role of ["worker", "reviewer"]) {
       const target = $(`observation-time-${role}`);
-      if (target) target.textContent = observations[role]?.observed_at ? `${cached.error ? "上次进程观测（本轮读取失败）" : "进程观测"}：${time(observations[role].observed_at)}` : "尚无进程观测时间";
+      if (target) target.textContent = observations[role]?.observed_at ? `${stale[role] ? "旧进程观测（读取失败或超过 30 秒未更新）" : "进程采样"}：${time(observations[role].observed_at)}` : "尚无进程观测时间";
     }
     const eventTime = $("event-observed-time");
     if (eventTime) eventTime.textContent = `事件页成功观测：${time(cached.eventObservedAt)}；后续变化由增量读取发现。`;
@@ -379,8 +406,8 @@
     const node = element("article", "agent-card");
     const heading = element("div", "section-heading");
     const observedState = observation?.state;
-    const observedLabel = !run ? "尚未创建" : ({ running: "进程运行中", not_running: "未观测到运行", unknown: "进程未知" }[observedState] || "缺少进程观测");
-    heading.append(element("h4", "", name), badge(`${stale ? "旧观测 · " : ""}${observedLabel}`, stale ? "unknown" : observedState || "unknown"));
+    const observedLabel = !run ? "无运行记录" : stale ? "旧观测 · 当前未知" : ({ running: "采样确认在线", not_running: "本次未运行 · 历史记录", unknown: "当前未知 · 不计在线" }[observedState] || "缺少进程观测");
+    heading.append(element("h4", "", `${name} 运行记录`), badge(observedLabel, stale ? "unknown" : observedState || "unknown"));
     node.append(heading);
     if (!run) {
       node.append(element("p", "section-note", "此任务尚无该角色的运行记录，不创建虚构会话或在线计数。"));
@@ -392,8 +419,8 @@
     observedTime.id = `observation-time-${role}`;
     node.append(observedTime);
     node.append(fields([
-      ["Run ID", run.id, true], ["记录角色", run.role], ["窗口 / pane", `${text(run.window)} / ${text(run.pane)}`, true],
-      ["实际 pane PID", observation?.pane_pid, true], ["实际 Agent PID", observation?.agent_pid, true],
+      ["Run ID", run.id, true], ["记录角色", run.role], ["历史窗口 / pane", `${text(run.window)} / ${text(run.pane)}`, true],
+      ["采样 pane PID", observation?.pane_pid, true], ["采样 Agent PID", observation?.agent_pid, true],
       ["历史记录 PID", run.pid, true], ["运行开始", timestamp(run.started_at)],
       ["会话文件", run.session_file ?? "尚未记录（初始会话也可能尚未落盘）", true]
     ]));
@@ -405,9 +432,12 @@
     node.append(paths);
     if (observation?.terminal_command) {
       const commands = element("div", "command-block");
-      commands.append(element("p", "section-note", "原生接入命令（仅复制）。进入后按 Ctrl-b w 选择上方窗口；如已在 tmux，先脱离避免嵌套。"));
+      const online = !stale && observedState === "running";
+      commands.append(element("p", "section-note", online
+        ? "采样时该实例在线。命令仅接入团队会话，不直接打开此 Run；进入后用 Ctrl-b w 核对窗口。进程可能已在采样后退出；如已在 tmux，先脱离避免嵌套。"
+        : "当前无此 Run 的在线证明；历史窗口可能已不存在。下方仅为团队会话接入命令，不保证能进入原窗口，也不会恢复进程。"));
       commands.append(element("pre", "", observation.terminal_command));
-      const copy = element("button", "", "复制接入命令");
+      const copy = element("button", "", online ? "复制团队会话接入命令" : "复制团队命令（非原窗口保证）");
       copy.type = "button";
       copy.id = `copy-${role}`;
       copy.addEventListener("click", () => copyCommand(observation.terminal_command));
@@ -580,5 +610,8 @@
   $("previous-page").addEventListener("click", () => navigate(-1));
   $("next-page").addEventListener("click", () => navigate(1));
   $("refresh").addEventListener("click", () => request(state.selected ? ["status", "list", "detail"] : ["status", "list"]));
+  // Expire a retained success even if requests hang or the tab was suspended.
+  setInterval(() => { if (state.selected) renderDetail(); }, 1000);
+  document.addEventListener("visibilitychange", () => { if (state.selected) renderDetail(); });
   request(["status", "list"]);
 })();

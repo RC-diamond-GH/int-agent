@@ -70,6 +70,7 @@ fn router(config: Config, port: u16) -> Router {
         .route("/", get(index))
         .route("/style.css", get(style))
         .route("/app.js", get(script))
+        .route("/docs/observability.zh-CN", get(observability_doc))
         .route("/api/status", get(status))
         .route("/api/tasks", get(tasks))
         .route("/api/task", get(task))
@@ -167,6 +168,12 @@ async fn script() -> Response {
     asset(
         "text/javascript; charset=utf-8",
         include_str!("../assets/web/app.js"),
+    )
+}
+async fn observability_doc() -> Response {
+    asset(
+        "text/plain; charset=utf-8",
+        include_str!("../docs/observability.zh-CN.md"),
     )
 }
 fn asset(content_type: &'static str, content: &'static str) -> Response {
@@ -309,6 +316,74 @@ mod tests {
                 .unwrap(),
         )
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn serves_only_embedded_observability_doc_without_daemon() {
+        let directory = tempfile::tempdir().unwrap();
+        let app = router(config(directory.path()), 8765);
+        let uri = "/docs/observability.zh-CN";
+        let response = app
+            .clone()
+            .oneshot(request("GET", uri, "localhost:8765"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let csp = response.headers()["content-security-policy"].clone();
+        let index = app
+            .clone()
+            .oneshot(request("GET", "/", "localhost:8765"))
+            .await
+            .unwrap();
+        assert_eq!(csp, index.headers()["content-security-policy"]);
+
+        let response = app
+            .clone()
+            .oneshot(request("POST", uri, "localhost:8765"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(response.headers()[header::ALLOW], "GET");
+        assert_eq!(response.headers()["content-security-policy"], csp);
+
+        let response = app
+            .clone()
+            .oneshot(request("GET", uri, "evil.example:8765"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.headers()["content-security-policy"], csp);
+        let mut cross_origin = request("GET", uri, "localhost:8765");
+        cross_origin.headers_mut().insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://evil.example"),
+        );
+        assert_eq!(
+            app.clone().oneshot(cross_origin).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+        for unknown in [
+            "/docs/unknown",
+            "/docs/observability.zh-CN.md",
+            "/docs/observability.zh-CN/",
+            "/docs/../Cargo.toml",
+            "/docs/%2e%2e/Cargo.toml",
+            "/docs/observability.zh-CN/../../Cargo.toml",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(request("GET", unknown, "localhost:8765"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{unknown}");
+            assert_eq!(response.headers()["content-security-policy"], csp);
+        }
     }
 
     #[tokio::test]

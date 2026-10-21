@@ -13,18 +13,18 @@
   <a class="skip-link" href="#task-detail">跳至任务详情</a>
   <header class="site-header">
     <div class="brand"><span class="brand-mark" aria-hidden="true">ia</span><div><strong>int-agent</strong><span>本机协作观测台</span></div></div>
-    <div class="header-actions"><span class="readonly">只读 · 不代答、不执行</span><button id="refresh" type="button">刷新观测</button></div>
+    <div class="header-actions"><a href="/docs/observability.zh-CN" target="_blank" rel="noopener noreferrer">观测说明</a><span class="readonly">只读 · 不代答、不执行</span><button id="refresh" type="button">刷新观测</button></div>
   </header>
   <main>
     <section class="overview" aria-labelledby="overview-title">
-      <div><p class="eyebrow">COLLABORATION / OBSERVABILITY</p><h1 id="overview-title">看清任务，回到现场。</h1><p class="intro">任务记录、实时进程观测与历史证据分开呈现。所有判断都有边界，所有操作仍在原生终端。</p></div>
+      <div><p class="eyebrow">COLLABORATION / OBSERVABILITY</p><h1 id="overview-title">看清任务，回到现场。</h1><p class="intro">任务交付阶段、当前运行采样与历史记录分开呈现。持久化阻塞不是在线实例；实际操作仍在原生终端。</p></div>
       <div class="connection-card"><div class="section-heading"><h2>控制器连接</h2><span id="connection-state" class="badge neutral">尚未观测</span></div><div id="status-data" class="status-data">正在读取本机 daemon…</div><p id="status-freshness" class="freshness">尚无成功观测</p><p id="status-error" class="error" role="status" hidden></p></div>
     </section>
     <section class="integration-panel" aria-labelledby="integration-title"><div><p class="eyebrow">GLOBAL INTEGRATION</p><h2 id="integration-title">全局集成占位 / 阻塞</h2><p>由 daemon 返回的全局集合，不受当前页或状态筛选影响；包含合并中、合并后 CI 与集成阻塞，并非全部任务都已失败。</p></div><div id="integration-blockers" class="blockers"><span class="muted">尚未读取</span></div><p id="blockers-freshness" class="freshness">尚无成功观测</p></section>
     <div class="workspace">
       <aside class="task-sidebar" aria-labelledby="tasks-title">
-        <div class="sidebar-heading"><p class="eyebrow">TASK INDEX</p><h2 id="tasks-title">任务索引</h2><p>每页最多 25 项，不代表团队总量。</p></div>
-        <label class="filter-label" for="state-filter">状态筛选 <span>仅筛选当前页</span></label>
+        <div class="sidebar-heading"><p class="eyebrow">TASK INDEX</p><h2 id="tasks-title">任务交付阶段索引</h2><p>每页最多 25 项，不代表团队总量。仅数据库摘要，未采样实际进程；运行引用不表示在线。</p></div>
+        <label class="filter-label" for="state-filter">交付阶段筛选 <span>仅筛选当前页</span></label>
         <select id="state-filter"><option value="all">当前页 · 全部状态</option></select>
         <p id="page-summary" class="page-summary" aria-live="polite">正在读取任务页…</p>
         <p id="list-error" class="error" role="status" hidden></p>

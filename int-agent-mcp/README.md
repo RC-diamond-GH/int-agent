@@ -31,7 +31,15 @@ cargo install --path . --locked
 
 ## 配置
 
-复制 `int-agent.example.json`，替换所有路径、仓库和真实 CI 检查名称。路径必须绝对，repository、worktree_root、state_dir 必须彼此不包含。仓库必须已有初始提交；不要把状态或 worktree 放进产品仓库。
+复制 `int-agent.example.json`，替换所有路径、仓库和真实 CI 检查名称。路径必须绝对，repository、worktree_root、state_dir 必须彼此不包含。仓库必须已有初始提交；不要把状态或 worktree 放进产品仓库。**示例保持 `"approval_mode": "write"`；复制示例后、启动 daemon 和任何 Worker / Reviewer 之前，先阅读下面的审批与风险说明，不要为消除等待直接改成 `yolo`。** JSON 不支持注释，示例的风险说明以本节为准。
+
+### 启动前明确选择原生审批模式
+
+默认 `approval_mode` 是 `write`，示例也保持 `write`；可选 `always-ask`。只有你明确接受**可信本机、同用户运行**的风险时，才在实际使用的配置文件中把该字段改为 `"approval_mode": "yolo"`，并在启动前保存。没有新增的 `int-agent-mcp --yolo` 或审批开关；控制器在**启动新的 omp 运行实例**时使用配置中的模式。
+
+`yolo` 会自动授权 omp 的工具调用，不再逐次等待原生工具权限确认；它不是沙箱。Worker / Reviewer 与你使用同一 Unix 用户，可以触及该用户可访问的文件、网络、Git 配置及共享 GitHub 凭据，可能修改或删除文件、运行命令、推送代码或操作远端资源。独立 worktree、角色提示词、只读网页和私有 socket 都不隔离这些能力。不要对不可信任务或代码启用；需要隔离时使用独立用户 / 容器、受限凭据和 GitHub 服务端规则。
+
+原生 `ask` 是用户问题，与工具权限确认独立；`yolo` 不会替用户回答。PR CI、固定版本 Review、精确 head 的合并授权、串行集成与合并后 CI 是控制器的另一组门禁，不因 `yolo` 被跳过；反过来，控制器门禁也不能阻止同用户 Agent 使用共享凭据绕开控制器直接操作 GitHub。
 
 ```bash
 mkdir -p "$HOME/.config/int-agent"
@@ -40,7 +48,7 @@ cp int-agent.example.json "$HOME/.config/int-agent/team.json"
 int-agent-mcp --config "$HOME/.config/int-agent/team.json" daemon
 ```
 
-主要配置：
+### 主要配置
 
 | 字段 | 含义 |
 | --- | --- |
@@ -51,7 +59,7 @@ int-agent-mcp --config "$HOME/.config/int-agent/team.json" daemon
 | `omp` / `tmux` / `gh` | 可执行文件名或绝对路径，不是 shell 命令字符串 |
 | `worker_model` / `reviewer_model` | 可选；省略时使用 omp 自身配置 |
 | `allowed_models` | MCP 调用者可以选择的模型；空数组禁止任意模型覆盖，配置的 `worker_model` 仍可选择 |
-| `approval_mode` | 默认 `write`；执行工具需用户批准，可明确选择 `always-ask` 或可信环境下的 `yolo` |
+| `approval_mode` | 默认 `write`；原生工具审批模式，可选 `always-ask`；仅在阅读启动前风险说明后明确选择 `yolo` |
 | `poll_seconds` | 控制器轮询间隔 1–60 秒；任务逐项推进 |
 | `max_workers` | 活跃任务上限 1–32；关联修复可以替代其阻塞父任务的活跃名额 |
 | `github.repository` | 真实 `OWNER/REPOSITORY`，须与 Git remote 指向同一仓库 |
@@ -62,7 +70,7 @@ int-agent-mcp --config "$HOME/.config/int-agent/team.json" daemon
 
 可以完全省略 `github`，用于本地 Worker 管理。此时任务不会假装通过 CI 或完成合并，不能自动标记交付完成；需要实际交付时配置真实 GitHub。不要用空成功脚本充当 `gh`。
 
-配置文件不热重载；修改后重启 daemon 与 MCP 接口，已有任务和 omp 进程保留。不要在任务执行中修改仓库/状态/worktree 根目录或模型运行环境。
+配置文件不热重载；修改后重启 daemon 与 MCP 接口。前台 daemon 可用 `Ctrl-C` 正常停止，随后用同一配置重新启动；不要用取消任务代替重启。任务记录和独立 tmux / omp 进程保留，重启只让**随后新启动的运行实例**使用新的 `approval_mode`，不会改变已有进程的原生审批模式。恢复操作若只是重连存活进程，也不会应用新模式；若实际新建 omp 进程，才会使用新配置。不要在任务执行中修改仓库/状态/worktree 根目录或模型运行环境。
 
 ### 长期运行 daemon
 
@@ -105,18 +113,22 @@ int-agent-mcp --config "$HOME/.config/int-agent/team.json" web --port 8765
 
 浏览器打开 **http://127.0.0.1:8765/**（也可用 `http://localhost:8765/`）。服务固定监听 `127.0.0.1`，没有对外监听选项。修改端口后同步修改浏览器 URL。`Ctrl-C` 只停止 Web 进程，不取消任务、不停止 daemon 或独立 Agent；Web 进程不自动启动或重启 daemon。daemon 不可用时显示读取错误，不填充演示数据。
 
+独立说明见 [可观测性与可信本机边界](docs/observability.zh-CN.md)。Web 也在同一地址的 `/docs/observability.zh-CN` 提供该文档的 UTF-8 纯文本版本（例如 `http://127.0.0.1:8765/docs/observability.zh-CN`），随二进制内嵌，不是通用文件服务器。
+
+看板刻意分开**持久任务阶段、当前进程采样、原生问答记录和版本化交付证据**，不把它们压成一个“在线 / 完成”灯。`running` 的任务记录不等于进程存活；进程运行不等于没有权限等待；`pending: null` 不等于没有问题；反馈 delivered 不等于已经返工。具体字段来源、更新时机、身份核验和当前缺口见独立文档。
+
 ### 如何读看板
 
 - 左侧任务每页最多 25 项，前后翻页使用 daemon 的游标。状态筛选**只作用于当前页**；“本页读取 / 筛选显示”不是团队总量。翻页或筛选隐藏已选任务时，右侧继续保留该任务。
 - “全局集成占位 / 阻塞”来自列表接口的独立全局集合，不由当前页计算；包含 `merging`、`post_merge_ci`、`integration_blocked`，不能把其中所有任务都称为失败。
-- 任务阶段是持久记录，不等于当前进程。Worker / Reviewer 分别显示 run ID、worktree、pane / window、会话目录、历史 PID 与服务端实际进程观测。只有校验私有 tmux pane、运行身份和实际 PID 后才显示进程运行中；观测失败保留 `unknown` 与原因，不猜测存活。`running` 不意味着模型正忙、没有人工等待或任务已经成功。
+- “任务交付阶段”是持久记录，不等于当前进程。“当前运行观测 · 仅所选任务”只统计该任务的 Worker / Reviewer，不是全队在线人数；任务索引只有数据库摘要，不计在线。“运行记录 · 工作区与会话历史”显示各角色最近持久化的 run ID、worktree、pane / window、会话目录与历史 PID，不是全部历史 run 清单。只有校验私有 tmux pane、运行身份和实际 PID 且观测新鲜时，才显示“采样确认在线”；未知保留原因，不猜测存活。`running` 不意味着模型正忙、没有人工等待或任务已经成功。
 - 完整任务约定、修复父子关联、PR、固定 base / head 审查报告、精确 merge SHA 与合并后 CI 分开呈现；PR CI 事件保留其原始版本证据。浏览器不直接查询 GitHub，旧事件不能充当新 head 的通过证明。`request_id` 是请求关联，不是创建者身份。
 - 详情首次读取最多 25 条事件；存在 `events_next_after` 时逐页增量续读，之后检查新事件。已读事件按 sequence 去重保留，切换任务或列表分页不清空；仅在当前浏览器页面内存保存，重新加载页面会重新读取。时间线筛选只针对已加载历史，“未见事件”不等于“未发生”。
-- 所有读取由单个异步循环串行执行，本轮结束约 5 秒后再轮询；选中任务改变时旧响应不会覆盖新选择。连接、列表、详情各自显示最近成功观测时间。失败保留旧数据和旧时间，运行卡片改为“旧观测”标识；错误在对应读取成功前保留。快照时间不是持续在线保证。
+- 所有读取由单个异步循环串行执行，本轮结束约 5 秒后再轮询；选中任务改变时旧响应不会覆盖新选择。连接、列表、详情各自显示最近成功观测时间。失败保留旧数据和旧时间，错误在对应读取成功前保留；详情读取失败立即把运行卡片改为“旧观测·当前未知”，采样超过 30 秒也不再计在线。页面按秒及可见性变化复核新鲜度，快照时间不是持续在线保证。
 
 ### 安全与观测边界
 
-Web 仅提供静态页面和 GET 读取 API，没有创建、答题、批准权限、恢复、取消、授权合并、归档或终端执行入口。接入按钮只复制 `observations` 中经过 shell 引用处理的命令，不执行命令，也不使用旧的未引用 `terminal_command`。请自行核对命令，在终端接入后用 `Ctrl-b w` 选择对应窗口；已处于其他 tmux 时先脱离，避免嵌套。
+Web 仅提供静态页面、内嵌文档和 GET 读取 API，没有创建、答题、批准权限、恢复、取消、授权合并、归档或终端执行入口。接入按钮只复制 `observations` 中经过 shell 引用处理的命令，不执行命令，也不使用旧的未引用 `terminal_command`。命令接入团队 session，不保证旧 run 窗口仍存在；请自行核对，在终端接入后用 `Ctrl-b w` 选择现场。已处于其他 tmux 时先脱离，避免嵌套。
 
 服务限制 loopback、Host / Origin 与同源访问，不启用 CORS；页面使用严格 CSP，本地脚本 / 样式无内联执行，记录文本按纯文本渲染，外链只接受 HTTP(S)。这不是多用户认证服务。任务目标、问题、路径、会话位置和错误可能敏感；不要经反向代理、端口转发或共享浏览器对不可信用户公开，也不要把本机可访问误认为可安全暴露互联网。
 

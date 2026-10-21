@@ -70,7 +70,7 @@ main { max-width: 1440px; padding: 38px 24px 24px; margin: 0 auto; }
 .task-card { width: 100%; text-align: left; border: 0; border-radius: 0; border-bottom: 1px solid #e9ede6; padding: 15px 17px; display: block; background: transparent; }
 .task-card[aria-pressed="true"] { background: #edf3e9; box-shadow: inset 3px 0 var(--green); }
 .task-card:hover:not(:disabled) { background: #f1f5ee; }
-.task-card .task-card-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.task-card .task-card-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; align-items: center; }
 .task-card .task-short-id { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-card h3 { font-size: 13px; font-weight: 600; margin: 8px 0 6px; overflow-wrap: anywhere; }
 .task-card .branch, .task-card .task-meta { display: block; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
@@ -156,7 +156,7 @@ footer > span { color: #84907d; font-size: 10px; }
   .task-detail { padding: 22px; }
 }
 @media (max-width: 760px) {
-  .site-header { padding: 13px 17px; }
+  .site-header { padding: 13px 17px; flex-wrap: wrap; }
   .brand, .header-actions { gap: 10px; }
   .readonly { display: none; }
   .brand strong { font-size: 17px; }
